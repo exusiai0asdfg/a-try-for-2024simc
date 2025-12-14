@@ -1,0 +1,137 @@
+\documentclass[a4paper,12pt]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx} 
+\usepackage{geometry} 
+\usepackage{listings} 
+\usepackage{xcolor}   
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+
+
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+
+\title{SIMC2024Report}
+\author{Li Shiming \\ xajdfz\and Liu Ye \\ xajdfz \and Wang Boran \\ xajdfz}
+\date{}
+
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+In this paper, we propose an efficient algorithmic approach to classify image patterns based on their geometric orientation. We address two scenarios: standard 2D image matrices (Task 1) and flattened 1D feature vectors (Task 2). Our method utilizes a "Generate and Match" strategy, where a reference image is rotated to create a template dictionary. For high-dimensional flattened data, we introduce a spatial reconstruction step to enable accurate rotation. The experimental results verify the accuracy and robustness of the proposed method.
+\end{abstract}
+
+\section{Introduction}
+Pattern recognition tasks often require identifying the orientation of an object relative to a reference. The dataset provided consists of patterns rotated at discrete angles: $0^\circ, 90^\circ, 180^\circ,$ and $270^\circ$. 
+
+The challenge lies in:
+\begin{enumerate}
+    \item \textbf{Task 1:} Handling 2D matrix data directly.
+    \item \textbf{Task 2:} Handling 1D flattened vectors where spatial information is not explicitly available.
+\end{enumerate}
+
+\section{Methodology}
+
+\subsection{Template Generation Strategy}
+Since the possible rotations are limited to a finite set $S = \{0^\circ, 90^\circ, 180^\circ, 270^\circ\}$, we avoid complex feature extraction. Instead, we employ a reference-based approach:
+1.  Select the first image as the \textit{Reference Pattern}.
+2.  Apply the rotation function $Rot(img, k)$ where $k \in \{0,1,2,3\}$.
+3.  Store the 4 variations in a dictionary: $D = \{angle: pattern\}$.
+
+\subsection{Handling Flattened Data (Task 2)}
+In Task 2, the data is given as vectors of length $L=1296$. A vector cannot be rotated geometrically. Therefore, we implement a \textbf{Reshape-Rotate-Flatten} pipeline:
+
+\begin{equation}
+    Dim = \sqrt{L} = \sqrt{1296} = 36
+\end{equation}
+
+The process is defined as:
+$$ Vector_{1D} \xrightarrow{\text{Reshape}} Matrix_{2D} \xrightarrow{\text{Rotate}} Matrix'_{2D} \xrightarrow{\text{Flatten}} Vector'_{1D} $$
+
+This ensures that the rotation respects the spatial topology of the original image.
+
+\section{Algorithm Description}
+
+The complete logic is described in Algorithm 1. This algorithm is universal for both tasks, with a conditional branch for data reshaping.
+
+\begin{algorithm}[H]
+\caption{Orientation Classification Algorithm}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Dataset patterns $P$, Reference Image $R$
+\State \textbf{Output:} Count Dictionary $Counts$
+\State Initialize $Counts \leftarrow \{0:0, 90:0, 180:0, 270:0\}$
+\State Initialize $Templates \leftarrow \{\}$
+
+\State \Comment{Step 1: Build Template Library}
+\For{$k = 0$ to $3$}
+    \State $Angle \leftarrow k \times 90$
+    \State $RotatedImg \leftarrow Rotate(R, k)$
+    \If{Task is Task 2}
+        \State $Templates[Angle] \leftarrow Flatten(RotatedImg)$
+    \Else
+        \State $Templates[Angle] \leftarrow RotatedImg$
+    \EndIf
+\EndFor
+
+\State \Comment{Step 2: Matching Process}
+\For{each pattern $p$ in $P$}
+    \For{$angle, template$ in $Templates$}
+        \If{$p \approx template$} \Comment{Check similarity}
+            \State $Counts[angle] \leftarrow Counts[angle] + 1$
+            \State \textbf{break}
+        \EndIf
+    \EndFor
+\EndFor
+\State \Return $Counts$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Implementation and Results}
+
+We implemented the algorithm using Python with \texttt{NumPy} for efficient matrix operations.
+
+\subsection{Task 1 Results}
+For the 2D matrix data, the algorithm successfully matched every pattern to the reference set. The computational cost was minimal due to the small image size ($10 \times 10$).
+
+\subsection{Task 2 Results}
+For the flattened data ($L=1296$), the reshaping strategy worked perfectly. By converting the vectors back to $36 \times 36$ matrices, we preserved the geometric integrity during rotation.
+
+\section{Conclusion}
+We presented a robust solution for discrete orientation classification. The key contribution is the handling of flattened vector data by temporarily restoring its spatial dimensions. This method is exact, efficient, and easily extensible to other geometric transformations.
+
+\section{AI Use Report}
+\textbf{Trae IDE} was uesed  for inline code completions.\textbf{Gemini 3.0} was used to generate \LaTeX{} code in formatting the document
+\end{document}

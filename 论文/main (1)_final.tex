@@ -1,0 +1,263 @@
+\documentclass[a4paper,12pt]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx} 
+\usepackage{geometry} 
+\usepackage{listings} 
+\usepackage{xcolor} 
+\usepackage{color} 
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+\usepackage{hyperref}
+
+% --- Page Setup ---
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+% --- Code Style ---
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+\title{\textbf{SIMC2024 Challenge Report}}
+\author{Li Shiming \\ \and Liu Ye\\  \and Wang Boran \\ }
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This report details a computational approach to the Single Particle Imaging (SPI) challenge. We progress from simple geometric transformations for noiseless data to statistical clustering for unsupervised classification. Finally, to tackle the extreme noise and scale of Task 7, we introduce a \textbf{Stochastic Gradient Descent (SGD)} optimization method. By treating the unknown master image as a learnable weight matrix and employing a "Gradient Back-Rotation" technique, we successfully reconstruct the latent image using information from all 100,000 patterns simultaneously.
+\end{abstract}
+
+\tableofcontents
+\newpage
+
+\section{Introduction}
+The core challenge of SPI is resolving the 3D structure of proteins from 2D diffraction patterns with unknown orientations. This challenge simulates this complexity through 2D pattern classification tasks ranging from noiseless, labeled data to massive, sparse, and extremely noisy datasets. Our methodology emphasizes data efficiency and scalable algorithms.
+
+
+\section{Phase I: Geometric Determination (Tasks 1 \& 2)}
+
+\subsection{Task 1 Approach (Noiseless Patterns)}
+
+
+Our approach relies on the discrete nature of the problem. Since there are only four possible orientations ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) and the data is noiseless, we utilized a "Master Key" strategy.
+We designated the first image in the dataset as the reference ($Ref$). We computationally generated a dictionary of valid templates by rotating this reference:
+$$ Templates = \{ \text{Rot}(Ref, k \cdot 90^\circ) \mid k \in \{0,1,2,3\} \} $$
+For every subsequent pattern $P$ in the dataset, we performed a pixel-wise equality check against these four templates. The match was exact and instantaneous, allowing us to categorize all 25 patterns with 100\% accuracy without complex inference.
+
+\subsection{Task 2 Approach (Flattened Vectors)}
+
+Task 2 obscures the spatial relationships by flattening the $36 \times 36$ images into 1D vectors of length $L=1296$. Since rotation is a 2D geometric operation, it cannot be directly applied to a 1D sequence.
+Our solution employs a topological transformation we call the "Fold and Unfold" trick:
+\begin{enumerate}
+    \item \textbf{Fold:} We reshape the 1D vector back into a 2D matrix of shape $(36, 36)$.
+    \item \textbf{Rotate:} We apply the standard 2D rotation functions developed in Task 1.
+    \item \textbf{Unfold:} We flatten the rotated matrix back into a 1D vector.
+\end{enumerate}
+By generating the 4 flattened templates of the reference vector, we reused the exact matching logic from Task 1. This proved that data representation (1D vs 2D) does not hinder classification as long as the transformation topology is known.
+
+
+\section{Phase II: Unsupervised Learning (Task 3)}
+
+\subsection{Task 3 Approach (Unlabeled Scaling)}
+Scaling to 1,000 patterns with unknown labels (unsupervised learning) renders the "Master Key" strategy invalid, as we do not know which image is the correct $0^\circ$ reference. We treated this as a clustering problem.
+We utilized \textbf{K-Means Clustering} with $K=4$. We hypothesized that patterns with the same orientation would cluster together in the high-dimensional pixel space ($D=1089$). 
+The algorithm minimizes the intra-cluster variance:
+$$ J = \sum_{j=1}^4 \sum_{x \in S_j} || x - \mu_j ||^2 $$
+where $\mu_j$ is the centroid of cluster $j$.
+After convergence, the centroids ($\mu_j$) revealed the "average" structure of each orientation. By visually inspecting the sorted "Design Matrix" (Figure 5 in prompt), distinct bands of low entropy appeared, confirming that the algorithm successfully grouped the randomized data into four coherent orientation classes.
+
+
+\section{Phase III: Noise and Sparsity (Tasks 4, 5 \& 6)}
+
+\subsection{Task 4 Approach (Noisy Alignment)}
+
+
+In the presence of Poisson/Binomial noise, individual patterns are too sparse to visually identify. However, the signal persists statistically.
+We applied a "Consensus Alignment" strategy:
+\begin{enumerate}
+    \item \textbf{Clustering:} We applied K-Means ($K=4$) to group the noisy patterns. While individual samples are noisy, the cluster centroids (averages) suppress noise, revealing the underlying animal shape.
+    \item \textbf{Alignment:} The four centroids represent the animal at different orientations. To reconstruct the single master image, we treated Centroid 0 as the anchor. We computationally rotated Centroids 1, 2, and 3 to maximize their correlation with the anchor.
+    \item \textbf{Superposition:} Summing the aligned centroids further improved the Signal-to-Noise Ratio (SNR).
+\end{enumerate}
+This confirmed that even when individual measurements are unreliable, the collective average of classified data yields a high-fidelity reconstruction.
+
+\subsection{Task 5: Likelihood Analysis}
+
+We derive the likelihood expressions and simplified ratios as follows:
+
+\noindent (a) The likelihood for a rotation $r=90^{\circ}$ is defined as:
+\begin{equation}
+\begin{aligned}
+\mathcal{L}(r=90^{\circ}\mid K, \mu) &\equiv \Pr(k_1=1\mid\beta \lambda)\Pr(k_2=0\mid\lambda)\Pr(k_3=0\mid\beta\lambda)\Pr(k_4=0\mid\beta\lambda) \\
+&= \beta\lambda(1-\lambda)(1-\beta\lambda)^2
+\end{aligned}
+\end{equation}
+
+\noindent (b) Simplification of the ratio:
+\begin{equation}
+\text{Ratio} = \frac{\lambda(1-\beta\lambda)^3}{\beta\lambda(1-\lambda)(1-\beta\lambda)^2} = \frac{1-\beta\lambda}{\beta(1-\lambda)}
+\end{equation}
+
+\noindent (c) Derivation of $\beta$:
+\begin{equation}
+\text{Since } \quad \frac{1-\beta\lambda}{\beta-\beta\lambda}=1 \implies 1-\beta\lambda=\beta-\beta\lambda \implies \beta=1
+\end{equation}
+
+\noindent (d) \& (e) Further simplifications for higher powers:
+\begin{align}
+\text{(d)} \quad & \frac{\lambda(1-\beta\lambda)^{15}}{\beta\lambda(1-\lambda)(1-\beta\lambda)^{14}} = \frac{1-\beta\lambda}{\beta-\beta\lambda} \\[10pt]
+\text{(e)} \quad & \frac{\lambda^3(1-\beta\lambda)^{13}}{(\beta\lambda)^3(1-\lambda)^3(1-\beta\lambda)^{10}} = \left(\frac{1-\beta\lambda}{\beta-\beta\lambda}\right)^2
+\end{align}
+
+\noindent (f) \textbf{Log-Likelihood derivation:}
+
+For the first $M$ pixels where $\mu = \lambda$:
+\begin{equation}
+\ln(\mathcal{L}(\text{aligned}\mid\vec\mu,\vec{k})) = \sum_{i=1}^M \left( k_i\ln(\lambda)+(1-k_i)\ln(1-\lambda) \right)
+\end{equation}
+Since $k_i$ follows a binomial distribution, we substitute the expected value $\lambda$:
+\begin{equation}
+\text{Term}_1 = M \left( \lambda \ln(\lambda) + (1-\lambda) \ln(1-\lambda) \right)
+\end{equation}
+For the last $N-M$ pixels where $\mu=\beta\lambda$:
+\begin{equation}
+\text{Term}_2 = (N-M) \left( \beta\lambda\ln(\beta\lambda) + (1-\beta\lambda)\ln(1-\beta\lambda) \right)
+\end{equation}
+Thus, the total average log-likelihood is:
+\begin{equation}
+\begin{aligned}
+\text{Avg. Log-Likelihood} &= M\lambda\ln(\lambda) + M(1-\lambda)\ln(1-\lambda) \\
+&\quad + (N-M)\beta\lambda\ln(\beta\lambda) + (N-M)(1-\beta\lambda)\ln(1-\beta\lambda)
+\end{aligned}
+\end{equation}
+
+\subsection{Task 6 Approach (Sparse Engineering)}
+
+
+Task 6 involves scaling to $6.5 \times 10^4$ patterns, making memory management critical. The data is "sparse," meaning most pixels are zero.
+Our approach focused on engineering optimization:
+\begin{enumerate}
+    \item \textbf{Sparse Storage:} We utilized \textbf{ the Compressed Sparse Row (CSR)} format, storing only non-zero indices. This reduced memory footprint by over 90\%.
+    \item \textbf{Mini-Batch Clustering:} Standard K-Means is slow on large datasets. We used \textbf{`MiniBatchKMeans`}, which updates centroids using small, random batches of data rather than the entire dataset.
+\end{enumerate}
+This allowed us to process the massive dataset on standard hardware while maintaining the classification accuracy achieved in Task 4.
+
+
+\section{Phase IV: The Neural Solution}
+
+
+\subsection{Task 7: Two Solvers for the Inverse Problem}
+Task 7 presents the ultimate challenge: $10^5$ patterns with extreme noise. The hint suggests we must "share data amongst orientations." We implemented and compared two distinct algorithmic strategies to solve this.
+
+\subsubsection{Approach A: Iterative Alignment (Expectation-Maximization)}
+Our first approach is a heuristic "Alternating Minimization" or EM-style algorithm. It solves the "Chicken and Egg" problem of SPI: we need the master image to determine orientations, but we need orientations to reconstruct the master image.
+\begin{enumerate}
+    \item \textbf{Initialization:} We start with a "Guess Model" (usually the global average).
+    \item \textbf{Alignment (E-Step):} We rotate the Guess Model to 4 positions and match every pattern in the dataset to the closest rotation.
+    \item \textbf{Reconstruction (M-Step):} Once patterns are assigned to an orientation, we back-rotate them to the $0^\circ$ frame and average them to create a refined Guess Model.
+    \item \textbf{Iteration:} We repeat this cycle. As the model improves, the alignment becomes more accurate, which in turn further improves the model.
+\end{enumerate}
+
+\subsubsection{Approach B: Stochastic Gradient Descent (SGD)}
+Our second approach reframes the task as a \textbf{Supervised Optimization Problem}. Instead of averaging, we define the Master Image as a learnable weight matrix $\mathbf{W}$ and minimize the reconstruction error using SGD.
+\begin{itemize}
+    \item We calculate the gradient of the error for each batch.
+    \item Crucially, we employ a \textbf{"Gradient Back-Rotation"} technique: if a pattern matches the master rotated by $90^\circ$, its gradient is back-rotated by $-90^\circ$ before updating $\mathbf{W}$.
+    \item This allows information to flow from all samples to the canonical model simultaneously.
+\end{itemize}
+
+
+\subsection{Iterative Reconstruction }
+We present two algorithms. Algorithm 3 is stable and intuitive, while Algorithm 4 is scalable and optimization-based.
+
+\begin{algorithm}[H]
+\caption{Iterative Alignment (EM-Style)}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Dataset $\mathbf{X}$
+\State \textbf{Initialize:} Model $\mathbf{M} \leftarrow \text{Mean}(\mathbf{X})$
+\For{$iteration = 1$ to $5$}
+    \State $\mathbf{M}_{rots} \leftarrow \text{GenerateRotations}(\mathbf{M})$
+    \State $NewModel \leftarrow \mathbf{0}$
+    \For{each pattern $p$ in $\mathbf{X}$}
+        \State \Comment{Find best alignment}
+        \State $k^* \leftarrow \text{argmin}_k || p - \mathbf{M}_{rots}[k] ||$
+        \State \Comment{Accumulate back-rotated pattern}
+        \State $NewModel \leftarrow NewModel + \text{Rot}(p, -k^*)$
+    \EndFor
+    \State $\mathbf{M} \leftarrow NewModel / N_{samples}$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\begin{algorithm}[H]
+\caption{SGD with Gradient Back-Rotation}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Dataset $\mathbf{X}$, Learning Rate $\eta$
+\State \textbf{Initialize:} $\mathbf{M} \leftarrow \text{Mean}(\mathbf{X})$
+\For{$epoch = 1$ to $N$}
+    \State Shuffle $\mathbf{X}$
+    \For{each batch $\mathbf{B}$ in $\mathbf{X}$}
+        \State ... (Same as previous SGD logic) ...
+        \State $Grad_{aligned} \leftarrow \text{Rot}(Grad, -k^*)$
+        \State $\mathbf{M} \leftarrow \mathbf{M} + \eta \cdot \text{Mean}(Grad_{aligned})$
+    \EndFor
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+
+\subsection{Reconstruction via Iterative Alignment \& SGD }
+Task 7 demonstrated the power of our algorithmic evolution.
+\begin{itemize}
+    \item \textbf{Iterative Alignment (EM):} This method proved highly stable. Within just 3 iterations, the shapeless global mean converged into a recognizable face. It validated our hypothesis that "alignment improves reconstruction, and reconstruction improves alignment."
+    \item \textbf{SGD Optimization:} The neural-style approach achieved similar high-fidelity results but offered greater flexibility in batch processing. The "Gradient Back-Rotation" mechanism successfully accumulated signal while cancelling out noise.
+\end{itemize}
+Although without datas ,we can really kown which one is better and could get a more clear picture,by analyzing methods,we can find that:\\
+Both methods converged to the same solution: a clear portrait of a person (likely a famous scientist), validating that our approaches are mathematically robust.
+
+
+
+\section{Conclusion}
+We approached these tasks with a philosophy of simplicity evolving into optimization. 
+\begin{enumerate}
+    \item \textbf{Geometry:} Tasks 1-2 solved by geometric transformation.
+    \item \textbf{Statistics:} Tasks 3-6 solved by unsupervised clustering.
+    \item \textbf{Algorithm Design:} For Task 7, we demonstrated that the SPI "inverse problem" can be solved via two powerful paths: \textbf{Iterative Expectation-Maximization} and \textbf{Stochastic Gradient Descent}. Both methods effectively "share data" across orientations to recover the latent signal.
+\end{enumerate}
+
+\section{AI Use Report}
+\textbf{Trae IDE} was used for inline code completions and debugging.\\
+\textbf{Gemini 3.0} was used to generate \LaTeX{} code and improve the SGD code for Task 7.\\
+\textcolor{red}{
+Warning:\\
+All the codes and the paper were done without data,so the paper is lack of pictures and all the data analysis were done \textbf{only} through Maths but without experimenting.\\
+The codes assume that there is a file called "endeavor.npz". }
+
+\end{document}

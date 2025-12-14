@@ -1,0 +1,142 @@
+\documentclass[a4paper,12pt]{article}
+
+% --- Packages ---
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb, amsfonts}
+\usepackage{graphicx} 
+\usepackage{geometry} 
+\usepackage{listings} 
+\usepackage{xcolor}   
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{float}
+
+% --- Page Setup ---
+\geometry{left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+% --- Code Style ---
+\definecolor{codegreen}{rgb}{0,0.6,0}
+\definecolor{codegray}{rgb}{0.5,0.5,0.5}
+\definecolor{codepurple}{rgb}{0.58,0,0.82}
+\definecolor{backcolour}{rgb}{0.95,0.95,0.92}
+
+\lstdefinestyle{mystyle}{
+    backgroundcolor=\color{backcolour},   
+    commentstyle=\color{codegreen},
+    keywordstyle=\color{magenta},
+    numberstyle=\tiny\color{codegray},
+    stringstyle=\color{codepurple},
+    basicstyle=\ttfamily\footnotesize,
+    breakatwhitespace=false,         
+    breaklines=true,                 
+    captionpos=b,                    
+    keepspaces=true,                 
+    numbers=left,                    
+    numbersep=5pt,                  
+    showspaces=false,                
+    showstringspaces=false,
+    showtabs=false,                  
+    tabsize=2
+}
+\lstset{style=mystyle}
+
+% --- Title ---
+\title{SIMC2024 Report: A Heuristic Approach to Pattern Classification and Recovery}
+\author{Li Shiming \\ xajdfz \and Liu Ye \\ xajdfz \and Wang Boran \\ xajdfz}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+This paper presents a unified, heuristic approach to solving image pattern challenges. We treat the problems not as complex mathematical abstractions, but as data transformation tasks. For Task 1 (Matrix) and Task 2 (Vector), we employ a direct "Key-Matching" strategy by geometrically transforming a reference image. For the unsupervised Task 3, we adopt a "Data Detective" approach: determining the image topology from vector length, applying K-Means clustering to reveal hidden structures, and using signal averaging to recover a latent image from noise.
+\end{abstract}
+
+\section{Introduction}
+We are presented with a dataset of patterns that have been rotated and mixed. The core challenge is to identify the orientation ($0^\circ, 90^\circ, 180^\circ, 270^\circ$) under different data conditions:
+\begin{enumerate}
+    \item \textbf{Task 1:} The data is clean and provided as 2D images.
+    \item \textbf{Task 2:} The data is flattened into 1D vectors, hiding the spatial structure.
+    \item \textbf{Task 3:} The data is flattened, noisy, and unlabeled (we don't know which image is which).
+\end{enumerate}
+
+\section{Methodology}
+
+\subsection{Task 1: The "Master Key" Strategy}
+Instead of training a complex classifier, we observe that the rotations are discrete. We simply take the first image in the dataset and treat it as our "Master Key" (Reference). 
+By manually rotating this Master Key by 90, 180, and 270 degrees, we generate a Reference Dictionary containing 4 perfect templates. We then classify every other image in the dataset by checking which of the 4 templates it matches perfectly.
+
+\subsection{Task 2: The "Fold and Unfold" Trick}
+Task 2 complicates matters by flattening the $N \times N$ image into a long vector of length $L=1296$.  \\
+You cannot "rotate" a 1D line of numbers. Our solution is topological:\\
+1.  Fold (Reshape): We calculate $N = \sqrt{1296} = 36$. We fold the 1D vector back into a $36 \times 36$ matrix.\\
+2.  Rotate: Now that structure is restored, we rotate the matrix using the Task 1 method.\\
+3.  Unfold (Flatten): We flatten the rotated matrix back into a 1D vector to compare it with the dataset.\\
+This "Reshape-Rotate-Flatten" cycle allows us to reuse the efficient matching logic from Task 1.\\
+
+\subsection{Task 3: Unsupervised Latent Pattern Discovery}
+Task 3 is the most challenging: the data is noisy, flattened ($L=1089$), and we have no "Master Key".
+We deduce the dimensions are $33 \times 33$ ($33^2 = 1089$). Since we cannot match against a known reference, we group the data based on similarity.
+
+We use K-Means Clustering ($K=4$) to automatically separate the data into 4 distinct groups. We hypothesize that the Centroid (average) of each cluster will represent the "clean" version of that rotation, as averaging cancels out the random noise.
+
+\section{Algorithm Description}
+
+The logic for our solution is streamlined into two core algorithms.
+
+\subsection{Supervised Matching (Task 1 \& 2)}
+\begin{algorithm}[H]
+\caption{Generate and Match}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Dataset $P$, First Image $Ref$
+\State \textbf{Output:} Counts for each angle
+\State $Templates \leftarrow \{\}$
+\For{$angle$ in $[0, 90, 180, 270]$}
+    \State $Img \leftarrow \text{Rotate}(Ref, angle)$
+    \If{Data is Flat}
+        \State $Img \leftarrow \text{Flatten}(Img)$ \Comment{The "Unfold" step}
+    \EndIf
+    \State $Templates[angle] \leftarrow Img$
+\EndFor
+\For{$p$ in $P$}
+    \State Find $angle$ where $p == Templates[angle]$
+    \State Increment count for $angle$
+\EndFor
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Unsupervised Recovery (Task 3)}
+\begin{algorithm}[H]
+\caption{Cluster and Recover}
+\begin{algorithmic}[1]
+\State \textbf{Input:} Noisy Matrix $\mathbf{X}$
+\State $Labels \leftarrow \text{KMeans}(\mathbf{X}, K=4)$
+\State \Comment{Sort data to visualize structure}
+\State $\mathbf{X}_{sorted} \leftarrow \text{SortByLabels}(\mathbf{X}, Labels)$
+\State \Comment{Recover signal by averaging}
+\State $CleanVector \leftarrow \text{GetCentroid}(\text{Cluster}_0)$
+\State $RecoveredImage \leftarrow \text{Reshape}(CleanVector, (33, 33))$
+\end{algorithmic}
+\end{algorithm}
+
+\section{Implementation and Results}
+
+\subsection{Tasks 1 \& 2: Exact Matching}
+For the 2D matrices (Task 1), our Master Key strategy achieved 100\% matching accuracy instantly. 
+For the flattened vectors (Task 2), the "Fold and Unfold" strategy proved robust. By temporarily restoring the 2D geometry, we successfully bridged the gap between vector storage and spatial transformation.
+
+\subsection{Task 3: From Chaos to Order}
+In Task 3, we visualized the dataset as a "Design Matrix". Initially, it appeared as random noise (high entropy). After applying K-Means and sorting the matrix by cluster labels, distinct bands appeared (low entropy), visually proving the existence of 4 orientation classes.
+
+Most importantly, the Cluster Centroid reconstruction was highly successful. While individual samples were noisy, the average of the cluster revealed a clear, distinct image (an animal figure). This confirms that simple statistical averaging is a powerful tool for signal recovery in unsupervised tasks.
+
+\section{Conclusion}
+We approached these tasks with a philosophy of simplicity. 
+For Tasks 1 and 2, we showed that complex problems often have simple geometric solutions (rotation and reshaping). 
+For Task 3, we demonstrated that even without labels, the inherent structure of data can be discovered through clustering. The "Design Matrix" visualization provided a powerful intuitive verification of our results.
+
+\section{AI Use Report}
+\textbf{Trae IDE} was used for inline code completions. \textbf{Gemini 3.0} was used to generate \LaTeX{} code in formatting the document.
+
+\end{document}
